@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 )
 
 // ErrorDetailer returns error details for responses & debugging. This enables
@@ -248,15 +249,52 @@ var NewError = func(status int, msg string, errs ...error) StatusError {
 	}
 }
 
-var NewErrorWithContext = func(_ Context, status int, msg string, errs ...error) StatusError {
+type ContextKey struct{}
+
+type OperationError struct {
+	Error string
+}
+
+func formatError(errs ...error) string {
+	if len(errs) == 0 {
+		return ""
+	}
+
+	messages := make([]string, 0, len(errs))
+	for i, err := range errs {
+		messages = append(messages, fmt.Sprintf("(%d) %s", i+1, err.Error()))
+	}
+
+	return strings.Join(messages, "\n")
+}
+
+var NewErrorWithContext = func(ctx Context, status int, msg string, errs ...error) StatusError {
+	if len(errs) > 0 {
+		if err, ok := ctx.Context().Value(ContextKey{}).(*OperationError); ok {
+			err.Error = formatError(errs...)
+		}
+	}
+
 	return NewError(status, msg, errs...)
+}
+
+func LogError(logger interface{ Errorf(string, ...any) }) func(ctx Context, next func(Context)) {
+	return func(ctx Context, next func(Context)) {
+		err := OperationError{}
+
+		next(WithValue(ctx, ContextKey{}, &err))
+
+		if err.Error != "" {
+			logger.Errorf(err.Error)
+		}
+	}
 }
 
 // WriteErr writes an error response with the given context, using the
 // configured error type and with the given status code and message. It is
 // marshaled using the API's content negotiation methods.
 func WriteErr(api API, ctx Context, status int, msg string, errs ...error) error {
-	var err = NewErrorWithContext(ctx, status, msg, errs...)
+	err := NewErrorWithContext(ctx, status, msg, errs...)
 
 	// NewError may have modified the status code, so update it here if needed.
 	// If it was not modified then this is a no-op.
