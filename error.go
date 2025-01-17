@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // ErrorDetailer returns error details for responses & debugging. This enables
@@ -278,11 +280,11 @@ var NewErrorWithContext = func(ctx Context, status int, msg string, errs ...erro
 	return NewError(status, msg, errs...)
 }
 
-func LogError(logger interface{ Errorf(string, ...any) }) func(ctx Context, next func(Context)) {
-	return func(ctx Context, next func(Context)) {
+func LogError(logger interface{ Errorf(string, ...any) }) func(ctx huma.Context, next func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
 		err := OperationError{}
 
-		next(WithValue(ctx, ContextKey{}, &err))
+		next(huma.WithValue(ctx, ContextKey{}, &err))
 
 		if err.Error != "" {
 			logger.Errorf(err.Error)
